@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>KABUSLAR_ZİNCİRİ_MUTLAK_DEHSET</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
@@ -37,6 +37,42 @@
         }
         #text-content { font-size: 9px; line-height: 1.8; color: #fff; }
         #prompt-content { font-size: 8px; color: #ff0055; text-align: right; font-weight: bold; }
+
+        #touch-controls {
+            position: absolute; bottom: 0; left: 0; width: 100%; z-index: 15;
+            display: none; justify-content: space-between; align-items: flex-end;
+            padding: 18px; box-sizing: border-box; pointer-events: none;
+        }
+        #joystick-zone {
+            position: relative; width: 130px; height: 130px;
+            border: 3px solid rgba(255,255,255,0.5); border-radius: 50%;
+            background: rgba(255,255,255,0.05); pointer-events: auto;
+            touch-action: none;
+        }
+        #joystick-knob {
+            position: absolute; top: 50%; left: 50%; width: 56px; height: 56px;
+            margin-left: -28px; margin-top: -28px; border-radius: 50%;
+            background: rgba(255,0,85,0.7); border: 2px solid #fff;
+            pointer-events: none;
+        }
+        #action-zone { display: flex; flex-direction: column; gap: 12px; pointer-events: auto; }
+        .touch-btn {
+            width: 86px; height: 86px; border-radius: 50%;
+            border: 3px solid #fff; background: rgba(255,0,85,0.35);
+            color: #fff; font-family: 'Press Start 2P', monospace; font-size: 9px;
+            display: flex; align-items: center; justify-content: center;
+            text-align: center; touch-action: none; pointer-events: auto;
+        }
+        .touch-btn:active { background: rgba(255,0,85,0.7); }
+
+        @media (max-width: 900px), (pointer: coarse) {
+            #touch-controls { display: flex; }
+            #dialogue-box { height: 110px; padding: 10px; bottom: 150px; }
+            #text-content { font-size: 8px; line-height: 1.6; }
+            #prompt-content { font-size: 7px; }
+            #battle-ui { top: 12px; }
+            .bar-label { font-size: 8px; }
+        }
     </style>
 </head>
 <body>
@@ -60,6 +96,15 @@
         <div id="prompt-content">[ SİSTEMİ BAŞLATMAK İÇİN BOŞLUK (SPACE) TUŞUNA BAS ]</div>
     </div>
 
+    <div id="touch-controls">
+        <div id="joystick-zone">
+            <div id="joystick-knob"></div>
+        </div>
+        <div id="action-zone">
+            <div class="touch-btn" id="btn-action">BAŞLA / E</div>
+        </div>
+    </div>
+
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
@@ -75,10 +120,17 @@
         function resize() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
+            let scale = 1;
+            if (window.innerWidth < 700) {
+                scale = Math.max(0.5, window.innerWidth / 700);
+            }
+            box.w = box.defaultW * scale;
+            box.h = box.defaultH * scale;
             box.x = canvas.width / 2 - box.w / 2;
             box.y = canvas.height / 2 - box.h / 2 - 20;
         }
         resize(); window.addEventListener('resize', resize);
+        window.addEventListener('orientationchange', resize);
 
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         function playTone(freq, type, duration, vol=0.18) {
@@ -223,7 +275,7 @@
             },
             {
                 name: "KABUSUN ÖZÜ: EBEDİ SESSİZLİK",
-                hp: 1000, maxHp: 1000,
+                hp: 380, maxHp: 380,
                 intro: "* SON DURAK. Kutunun daralma hızı dengelendi ve mermiler yavaşlatıldı. Sadece sakin kal ve DİREN.",
                 speed: 1.8, color: "#ff0033", type: "abyss"
             }
@@ -231,6 +283,79 @@
 
         window.addEventListener('keydown', e => { keys[e.key] = true; handleInput(e.key); });
         window.addEventListener('keyup', e => { keys[e.key] = false; });
+
+        const joystickZone = document.getElementById('joystick-zone');
+        const joystickKnob = document.getElementById('joystick-knob');
+        const btnAction = document.getElementById('btn-action');
+        let joystickActive = false;
+        let joystickTouchId = null;
+
+        function resetJoystick() {
+            keys["ArrowUp"] = false; keys["ArrowDown"] = false;
+            keys["ArrowLeft"] = false; keys["ArrowRight"] = false;
+            joystickKnob.style.transform = "translate(0px, 0px)";
+            joystickActive = false; joystickTouchId = null;
+        }
+
+        function updateJoystickFromPosition(clientX, clientY) {
+            let rect = joystickZone.getBoundingClientRect();
+            let centerX = rect.left + rect.width / 2;
+            let centerY = rect.top + rect.height / 2;
+            let dx = clientX - centerX;
+            let dy = clientY - centerY;
+            let maxDist = rect.width / 2;
+            let dist = Math.min(Math.hypot(dx, dy), maxDist);
+            let angle = Math.atan2(dy, dx);
+            let knobX = Math.cos(angle) * dist;
+            let knobY = Math.sin(angle) * dist;
+            joystickKnob.style.transform = `translate(${knobX}px, ${knobY}px)`;
+
+            let deadZone = maxDist * 0.25;
+            keys["ArrowUp"] = dy < -deadZone;
+            keys["ArrowDown"] = dy > deadZone;
+            keys["ArrowLeft"] = dx < -deadZone;
+            keys["ArrowRight"] = dx > deadZone;
+        }
+
+        joystickZone.addEventListener('touchstart', e => {
+            e.preventDefault();
+            let touch = e.changedTouches[0];
+            joystickTouchId = touch.identifier;
+            joystickActive = true;
+            updateJoystickFromPosition(touch.clientX, touch.clientY);
+        }, { passive: false });
+
+        joystickZone.addEventListener('touchmove', e => {
+            e.preventDefault();
+            if (!joystickActive) return;
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                let touch = e.changedTouches[i];
+                if (touch.identifier === joystickTouchId) {
+                    updateJoystickFromPosition(touch.clientX, touch.clientY);
+                }
+            }
+        }, { passive: false });
+
+        joystickZone.addEventListener('touchend', e => {
+            e.preventDefault();
+            resetJoystick();
+        }, { passive: false });
+
+        joystickZone.addEventListener('touchcancel', e => {
+            e.preventDefault();
+            resetJoystick();
+        }, { passive: false });
+
+        btnAction.addEventListener('touchstart', e => {
+            e.preventDefault();
+            if (gameState === "INTRO") handleInput(" ");
+            else if (gameState === "BOSS_DEAD") handleInput("e");
+        }, { passive: false });
+
+        btnAction.addEventListener('click', e => {
+            if (gameState === "INTRO") handleInput(" ");
+            else if (gameState === "BOSS_DEAD") handleInput("e");
+        });
 
         function handleInput(key) {
             if (gameState === "INTRO" && key === " ") {
