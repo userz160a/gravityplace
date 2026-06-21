@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KABUSLAR_ZİNCİRİ_MUTLAK_DEHSET</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            background-color: #000000; overflow: hidden;
+            font-family: 'Press Start 2P', monospace;
+            image-rendering: pixelated; user-select: none;
+        }
+
+        canvas { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
+        #crt { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: linear-gradient(rgba(0,0,0,0) 50%, rgba(20,0,0,0.5) 50%); background-size: 100% 4px; z-index: 5; pointer-events: none; }
+
+        #battle-ui {
+            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+            width: 90%; max-width: 1000px; display: flex; justify-content: space-between; z-index: 10;
+        }
+        .ui-box { width: 45%; text-align: center; }
+        .bar-label { font-size: 10px; margin-bottom: 6px; text-shadow: 2px 2px #000; color: #fff; letter-spacing: 1px; }
+        .hp-container { width: 100%; height: 18px; border: 3px solid #fff; background: #000; padding: 1px; box-sizing: border-box; }
+        .hp-fill { height: 100%; width: 100%; transition: width 0.01s linear; }
+        #player-fill { background: #00ffbc; box-shadow: 0 0 12px #00ffbc; }
+        #boss-fill { background: #ff0055; box-shadow: 0 0 12px #ff0055; }
+
+        #dialogue-box {
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            width: 90%; max-width: 1000px; height: 140px;
+            background: #000; border: 4px solid #fff;
+            padding: 15px; box-sizing: border-box; z-index: 10;
+            display: flex; flex-direction: column; justify-content: space-between;
+        }
+        #text-content { font-size: 9px; line-height: 1.8; color: #fff; }
+        #prompt-content { font-size: 8px; color: #ff0055; text-align: right; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <canvas id="gameCanvas"></canvas>
+    <div id="crt"></div>
+
+    <div id="battle-ui">
+        <div class="ui-box">
+            <div id="player-label" class="bar-label">AKIL SAĞLIĞI: 100%</div>
+            <div class="hp-container"><div id="player-fill" class="hp-fill"></div></div>
+        </div>
+        <div class="ui-box">
+            <div id="boss-label" class="bar-label">SİSTEM YÜKLENİYOR...</div>
+            <div class="hp-container"><div id="boss-fill" class="hp-fill"></div></div>
+        </div>
+    </div>
+
+    <div id="dialogue-box">
+        <div id="text-content">Karanlığın derinliklerine giriş protokolü...</div>
+        <div id="prompt-content">[ SİSTEMİ BAŞLATMAK İÇİN BOŞLUK (SPACE) TUŞUNA BAS ]</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const playerFill = document.getElementById('player-fill');
+        const bossFill = document.getElementById('boss-fill');
+        const playerLabel = document.getElementById('player-label');
+        const bossLabel = document.getElementById('boss-label');
+        const textCtx = document.getElementById('text-content');
+        const promptCtx = document.getElementById('prompt-content');
+
+        const box = { x: 0, y: 0, w: 580, h: 360, defaultW: 580, defaultH: 360 };
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            box.x = canvas.width / 2 - box.w / 2;
+            box.y = canvas.height / 2 - box.h / 2 - 20;
+        }
+        resize(); window.addEventListener('resize', resize);
+
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playTone(freq, type, duration, vol=0.18) {
+            try {
+                let glitchFactor = (100 - sanity) / 100;
+                let finalFreq = freq - (glitchFactor * (freq * 0.5));
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain); gain.connect(audioCtx.destination);
+                osc.type = glitchFactor > 0.4 ? 'sawtooth' : type;
+                osc.frequency.setValueAtTime(finalFreq, audioCtx.currentTime);
+                gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+                gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + duration);
+                osc.start(); osc.stop(audioCtx.currentTime + duration);
+            } catch(e) {}
+        }
+
+        const BULLET_SPEED_MULT = 1.5;
+        const HEAL_AMOUNT = 5;
+
+        let sanity = 100;
+        let gameState = "INTRO";
+        let currentBossIndex = 0;
+        let frameCount = 0;
+        let screenShake = 0;
+
+        const gameStartTime = Date.now();
+        let eventLog = [];
+        let resultSent = false;
+        let playerUsername = "Oyuncu";
+        try {
+            let urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get("username")) playerUsername = urlParams.get("username");
+        } catch(e) {}
+
+        function logEvent(type, extra) {
+            let entry = { type: type, t: Math.round((Date.now() - gameStartTime) / 100) / 10 };
+            if (extra) {
+                for (let k in extra) entry[k] = extra[k];
+            }
+            eventLog.push(entry);
+        }
+
+        function sendResultToParent(outcome) {
+            if (resultSent) return;
+            resultSent = true;
+            let survivedSeconds = Math.round((Date.now() - gameStartTime) / 100) / 10;
+            let payload = {
+                type: "GAME_OVER",
+                username: playerUsername,
+                outcome: outcome,
+                finalBossIndex: currentBossIndex,
+                finalBossName: bosses[currentBossIndex] ? bosses[currentBossIndex].name : "BİLİNMİYOR",
+                survivedSeconds: survivedSeconds,
+                eventLog: eventLog
+            };
+            try {
+                window.parent.postMessage(payload, "*");
+            } catch(e) {}
+        }
+
+        let lastLiveUpdate = 0;
+        function sendLiveUpdate() {
+            let now = Date.now();
+            if (now - lastLiveUpdate < 800) return;
+            lastLiveUpdate = now;
+            try {
+                window.parent.postMessage({
+                    type: "LIVE_UPDATE",
+                    username: playerUsername,
+                    bossIndex: currentBossIndex,
+                    bossName: bosses[currentBossIndex] ? bosses[currentBossIndex].name : "",
+                    sanity: Math.ceil(sanity),
+                    outcome: "PLAYING"
+                }, "*");
+            } catch(e) {}
+        }
+
+        const heart = { x: box.x + box.w / 2, y: box.y + box.h / 2, size: 8, speed: 5.5, invulnFrames: 0 };
+        let keys = {};
+
+        let bullets = [];
+        let lasers = [];
+        let particles = [];
+        let hallucinations = [];
+        let fleshItems = [];
+
+        const bosses = [
+            {
+                name: "ET KUKLASI: ZİNCİRSİZ ÖFKE",
+                hp: 240, maxHp: 240,
+                intro: "* Parçalanmış et yığınları zincirlerinden boşandı. İlk kabus artık çok daha vahşi ve kontrolsüz!",
+                speed: 2.2, color: "#ff0044", type: "puppet"
+            },
+            {
+                name: "FREKANS YIRTILMASI: CEHENNEM DALGASI",
+                hp: 260, maxHp: 260,
+                intro: "* Dalgalar gerçeği tamamen yırtıyor. Ses dalgaları beynini eritmeye odaklandı.",
+                speed: 1.8, color: "#00ffff", type: "frequency"
+            },
+            {
+                name: "YAMYAM AYİNİ: KATLİAM ŞENLİĞİ",
+                hp: 310, maxHp: 310,
+                intro: "* Çenelerin arasından sızan salyalar kutuyu kaplıyor. Seni çiğnemeden yutmak istiyorlar.",
+                speed: 2.3, color: "#990000", type: "cannibal"
+            },
+            {
+                name: "KANLI GÖZ: PARANOYA HİSTERİSİ",
+                hp: 260, maxHp: 260,
+                intro: "* Göz bebeği öfkeyle büyüdü! Odaklanma hızı ve mermi sıklığı dengelendi.",
+                speed: 1.9, color: "#ff0000", type: "eye"
+            },
+            {
+                name: "VEBA DOKTORU: TOKSİK KIYAMET",
+                hp: 310, maxHp: 310,
+                intro: "* Saf çürüme ve asit bulutları. Ciğerlerin yanıyor, parazitler kutunun her yerinde.",
+                speed: 2.4, color: "#44ff44", type: "doctor"
+            },
+            {
+                name: "MUTLAK BOŞLUK: NULL - KULLANICI HATASI",
+                hp: 420, maxHp: 420,
+                intro: "* HİÇLİK. Kod hataları ve dijital kıyamet. Ritmini bul, parazit zayıfladı ama hala ölümcül.",
+                speed: 2.6, color: "#ffffff", type: "null"
+            },
+            {
+                name: "KOD HATASI: SİSTEM YOLSUZLUĞU",
+                hp: 230, maxHp: 230,
+                intro: "* Veri sızıntısı kontrol altına alındı. Ateş hızı düşürüldü, mermiler artık daha az sekiyor.",
+                speed: 1.5, color: "#ffaa00", type: "glitch"
+            },
+            {
+                name: "GÖLGE ALGORİTMASI: VERİ PARAZİTİ",
+                hp: 360, maxHp: 360,
+                intro: "* Yolsuzluk ve yansıma arasındaki boşlukta doğan yapay kabus. Çapraz ve sarmal veri mermileri fırlatıyor!",
+                speed: 2.4, color: "#00ffaa", type: "shadow"
+            },
+            {
+                name: "KORAY BEY: AYNA YANSIMASI",
+                hp: 500, maxHp: 500,
+                intro: "* Gücü tamamen serbest kaldı! Artık merkez çekim gücü çok daha sert ve ayna mermileri doğrudan üzerine kilitleniyor!",
+                speed: 3.5, color: "#8800ff", type: "mirror"
+            },
+            {
+                name: "KABUSUN ÖZÜ: EBEDİ SESSİZLİK",
+                hp: 1000, maxHp: 1000,
+                intro: "* SON DURAK. Kutunun daralma hızı dengelendi ve mermiler yavaşlatıldı. Sadece sakin kal ve DİREN.",
+                speed: 1.8, color: "#ff0033", type: "abyss"
+            }
+        ];
+
+        window.addEventListener('keydown', e => { keys[e.key] = true; handleInput(e.key); });
+        window.addEventListener('keyup', e => { keys[e.key] = false; });
+
+        function handleInput(key) {
+            if (gameState === "INTRO" && key === " ") {
+                startBossFight();
+            } else if (gameState === "BOSS_DEAD" && key.toLowerCase() === "e") {
+                currentBossIndex++;
+                if (currentBossIndex >= bosses.length) {
+                    gameState = "ULTIMATE_VICTORY";
+                } else {
+                    setupBossIntro();
+                }
+            }
+        }
+
+        function setupBossIntro() {
+            gameState = "INTRO";
+            bullets = []; lasers = []; hallucinations = []; fleshItems = [];
+            box.w = box.defaultW; box.h = box.defaultH; resize();
+            let b = bosses[currentBossIndex];
+            bossLabel.innerText = `${b.name}`;
+            bossFill.style.width = "100%";
+            bossFill.style.background = b.color;
+            bossFill.style.boxShadow = `0 0 12px ${b.color}`;
+
+            textCtx.innerHTML = b.intro;
+            promptCtx.innerHTML = "[ KABUSLA YÜZLEŞMEK İÇİN BOŞLUK (SPACE) TUŞUNA BAS ]";
+            playTone(120, 'sawtooth', 0.6, 0.2);
+            logEvent("BOSS_INTRO", { bossIndex: currentBossIndex, bossName: b.name });
+        }
+
+        function startBossFight() {
+            gameState = "FIGHT";
+            textCtx.innerHTML = `* Savaş alanı aktifleşti. Hayatta kalmak için parçaları topla!`;
+            promptCtx.innerHTML = "[ WASD / YÖN TUŞLARI - SAVAŞ YA DA ERİ ]";
+            heart.x = box.x + box.w / 2;
+            heart.y = box.y + box.h / 2;
+            heart.invulnFrames = 0;
+            frameCount = 0;
+            logEvent("FIGHT_STARTED", { bossIndex: currentBossIndex, bossName: bosses[currentBossIndex].name });
+        }
+
+        function triggerDamage(damageMult) {
+            if (heart.invulnFrames > 0) return;
+
+            let mult = damageMult === undefined ? 1 : damageMult;
+            sanity = Math.max(0, sanity - 3.5 * mult);
+            heart.invulnFrames = 25;
+            screenShake = 28 * mult;
+            playTone(40, 'sawtooth', 0.15, 0.6);
+            logEvent("DAMAGE_TAKEN", { bossIndex: currentBossIndex, mult: mult, sanityAfter: Math.ceil(sanity) });
+
+            for(let i=0; i<10; i++) {
+                particles.push({
+                    x: heart.x, y: heart.y,
+                    vx: (Math.random()-0.5)*14, vy: (Math.random()-0.5)*14,
+                    size: Math.random()*5+2, color: "#ff0000", life: 20
+                });
+            }
+        }
+
+        function updateFightMechanics() {
+            frameCount++;
+            if (screenShake > 0) screenShake *= 0.9;
+            if (heart.invulnFrames > 0) heart.invulnFrames--;
+            sendLiveUpdate();
+
+            let currentBoss = bosses[currentBossIndex];
+            let spdMult = currentBoss.speed;
+
+            currentBoss.hp = Math.max(0, currentBoss.hp - 0.095);
+            bossLabel.innerText = `${currentBoss.name}: ${Math.ceil(currentBoss.hp)}/${currentBoss.maxHp}`;
+            bossFill.style.width = (currentBoss.hp / currentBoss.maxHp * 100) + "%";
+
+            if (frameCount % 180 === 0) {
+                fleshItems.push({
+                    x: box.x + 40 + Math.random() * (box.w - 80),
+                    y: box.y + 40 + Math.random() * (box.h - 80),
+                    size: 11, pulse: 0, life: 320
+                });
+            }
+
+            if (currentBoss.hp <= 0) {
+                gameState = "BOSS_DEAD";
+                playTone(450, 'sine', 0.8, 0.3);
+                textCtx.innerHTML = `* Bir bağ daha koptu. Ama burası bitmeyecek...`;
+                promptCtx.innerHTML = "[ BİR SONRAKİ KABUSA GEÇMEK İÇİN 'E' TUŞUNA BAS ]";
+                logEvent("BOSS_DEFEATED", { bossIndex: currentBossIndex, bossName: currentBoss.name, sanityLeft: Math.ceil(sanity) });
+                return;
+            }
+
+            let moveX = 0; let moveY = 0;
+            if (keys["ArrowUp"] || keys["w"] || keys["W"]) moveY -= heart.speed;
+            if (keys["ArrowDown"] || keys["s"] || keys["S"]) moveY += heart.speed;
+            if (keys["ArrowLeft"] || keys["a"] || keys["A"]) moveX -= heart.speed;
+            if (keys["ArrowRight"] || keys["d"] || keys["D"]) moveX += heart.speed;
+
+            heart.x += moveX; heart.y += moveY;
+
+            if (heart.x < box.x + heart.size) heart.x = box.x + heart.size;
+            if (heart.x > box.x + box.w - heart.size) heart.x = box.x + box.w - heart.size;
+            if (heart.y < box.y + heart.size) heart.y = box.y + heart.size;
+            if (heart.y > box.y + box.h - heart.size) heart.y = box.y + box.h - heart.size;
+
+            for (let i = fleshItems.length - 1; i >= 0; i--) {
+                let f = fleshItems[i]; f.life--; f.pulse += 0.18;
+                if (Math.hypot(f.x - heart.x, f.y - heart.y) < (f.size / 2 + heart.size)) {
+                    sanity = Math.min(100, sanity + HEAL_AMOUNT);
+                    playTone(650, 'sine', 0.18, 0.35);
+                    for(let p=0; p<6; p++) {
+                        particles.push({
+                            x: f.x, y: f.y, vx: (Math.random()-0.5)*7, vy: (Math.random()-0.5)*7, size: 3, color: "#00ffbc", life: 14
+                        });
+                    }
+                    fleshItems.splice(i, 1); continue;
+                }
+                if (f.life <= 0) fleshItems.splice(i, 1);
+            }
+
+            if (sanity < 75 && frameCount % 7 === 0) {
+                hallucinations.push({
+                    x: box.x + Math.random()*box.w, y: box.y + Math.random()*box.h,
+                    vx: (Math.random()-0.5)*3, vy: (Math.random()-0.5)*3, size: Math.random()*30 + 10, color: "rgba(180, 0, 0, 0.25)"
+                });
+            }
+
+            if (currentBoss.type === "puppet") {
+                if (frameCount % 2 === 0) {
+                    let angle = (frameCount * 0.22) * spdMult;
+                    bullets.push({ x: box.x + box.w / 2, y: box.y + 60, vx: Math.cos(angle)*6.5*BULLET_SPEED_MULT, vy: Math.sin(angle)*6.5*BULLET_SPEED_MULT, size: 10, color: currentBoss.color });
+                }
+                if (frameCount % 12 === 0) {
+                    bullets.push({ x: box.x + box.w / 2, y: box.y + 60, vx: (Math.random()-0.5)*9*BULLET_SPEED_MULT, vy: (Math.random()*7+4)*BULLET_SPEED_MULT, size: 9, color: "#ffffff" });
+                }
+            }
+
+            if (currentBoss.type === "frequency") {
+                if (frameCount % 8 === 0) {
+                    bullets.push({ x: box.x, y: box.y + Math.random()*box.h, vx: 6.5*BULLET_SPEED_MULT, vy: 0, size: 10, color: currentBoss.color });
+                    bullets.push({ x: box.x + box.w, y: box.y + Math.random()*box.h, vx: -6.5*BULLET_SPEED_MULT, vy: 0, size: 10, color: currentBoss.color });
+                }
+                if (frameCount % 45 === 0) {
+                    lasers.push({ y: heart.y, warning: 20, active: 15, thickness: 20 });
+                }
+            }
+
+            if (currentBoss.type === "cannibal") {
+                if (frameCount % 6 === 0) {
+                    bullets.push({ x: box.x + Math.random()*box.w, y: box.y, vx: (Math.random()-0.5)*6*BULLET_SPEED_MULT, vy: 6.5 * spdMult * BULLET_SPEED_MULT, size: 11, color: "#ff3333" });
+                }
+                if (frameCount % 25 === 0) {
+                    for(let i=0; i<10; i++) {
+                        let a = (Math.PI*2/10)*i;
+                        bullets.push({ x: box.x + box.w/2, y: box.y + box.h/2, vx: Math.cos(a)*6.0*BULLET_SPEED_MULT, vy: Math.sin(a)*6.0*BULLET_SPEED_MULT, size: 12, color: "#550000" });
+                    }
+                }
+            }
+
+            if (currentBoss.type === "eye") {
+                if (frameCount % 7 === 0) {
+                    let angleToHeart = Math.atan2(heart.y - (box.y + 50), heart.x - (box.x + box.w/2));
+                    bullets.push({ x: box.x + box.w/2, y: box.y + 50, vx: Math.cos(angleToHeart)*5.0*BULLET_SPEED_MULT, vy: Math.sin(angleToHeart)*5.0*BULLET_SPEED_MULT, size: 8, color: "#ff0000" });
+                }
+                if (frameCount % 35 === 0) {
+                    for(let i=0; i<8; i++) {
+                        let a = (Math.PI * 2 / 8) * i;
+                        bullets.push({ x: box.x + box.w/2, y: box.y + 100, vx: Math.cos(a)*4.2*BULLET_SPEED_MULT, vy: Math.sin(a)*4.2*BULLET_SPEED_MULT, size: 8, color: "#aa0000" });
+                    }
+                }
+            }
+
+            if (currentBoss.type === "doctor") {
+                if (frameCount % 8 === 0) {
+                    bullets.push({ x: box.x + Math.random()*box.w, y: box.y, vx: (Math.random()-0.5)*2.5*BULLET_SPEED_MULT, vy: 4.5*BULLET_SPEED_MULT, size: 11, color: "#44ff44", split: true });
+                }
+                if (frameCount % 60 === 0) {
+                    lasers.push({ y: heart.y, warning: 20, active: 18, thickness: 30 });
+                }
+            }
+
+            if (currentBoss.type === "null") {
+                if (frameCount % 4 === 0) {
+                    let angle = frameCount * 0.35;
+                    bullets.push({ x: box.x + box.w/2, y: box.y + box.h/2, vx: Math.cos(angle)*6.5*BULLET_SPEED_MULT, vy: Math.sin(angle)*6.5*BULLET_SPEED_MULT, size: 10, color: "#fff" });
+                }
+                if (frameCount % 20 === 0) {
+                    bullets.push({ x: heart.x, y: box.y, vx: 0, vy: 7.0*BULLET_SPEED_MULT, size: 12, color: "#ff0055" });
+                    bullets.push({ x: box.x, y: heart.y, vx: 7.0*BULLET_SPEED_MULT, vy: 0, size: 12, color: "#ff0055" });
+                }
+            }
+
+            if (currentBoss.type === "glitch") {
+                if (frameCount % 14 === 0) {
+                    bullets.push({
+                        x: box.x + box.w / 2, y: box.y + 40,
+                        vx: (Math.random() - 0.5) * 4.2 * BULLET_SPEED_MULT, vy: (Math.random() * 3 + 2.5) * BULLET_SPEED_MULT,
+                        size: 9, color: "#ffaa00", bounce: 1
+                    });
+                }
+                if (frameCount % 60 === 0) {
+                    lasers.push({ y: box.y + Math.random()*box.h, warning: 30, active: 12, thickness: 15 });
+                }
+            }
+
+            if (currentBoss.type === "shadow") {
+                if (frameCount % 6 === 0) {
+                    let a = frameCount * 0.15;
+                    bullets.push({ x: box.x + box.w/2, y: box.y + 40, vx: Math.cos(a)*4.5*BULLET_SPEED_MULT, vy: Math.sin(a)*4.5*BULLET_SPEED_MULT, size: 9, color: "#00ffaa" });
+                    bullets.push({ x: box.x + box.w/2, y: box.y + 40, vx: -Math.cos(a)*4.5*BULLET_SPEED_MULT, vy: -Math.sin(a)*4.5*BULLET_SPEED_MULT, size: 9, color: "#00aa66" });
+                }
+                if (frameCount % 40 === 0) {
+                    bullets.push({ x: box.x, y: box.y, vx: 4.0*BULLET_SPEED_MULT, vy: 4.0*BULLET_SPEED_MULT, size: 11, color: "#ffffff" });
+                    bullets.push({ x: box.x + box.w, y: box.y, vx: -4.0*BULLET_SPEED_MULT, vy: 4.0*BULLET_SPEED_MULT, size: 11, color: "#ffffff" });
+                }
+            }
+
+            if (currentBoss.type === "mirror") {
+                let centerX = box.x + box.w/2;
+                let centerY = box.y + box.h/2;
+                let angleToCenter = Math.atan2(centerY - heart.y, centerX - heart.x);
+                heart.x += Math.cos(angleToCenter) * 2.8;
+                heart.y += Math.sin(angleToCenter) * 2.8;
+
+                if (frameCount % 3 === 0) {
+                    let angleToHeart = Math.atan2(heart.y - (box.y + 40), heart.x - centerX);
+                    bullets.push({
+                        x: centerX, y: box.y + 40,
+                        vx: Math.cos(angleToHeart) * 6.5 * BULLET_SPEED_MULT, vy: Math.sin(angleToHeart) * 6.5 * BULLET_SPEED_MULT,
+                        size: 11, color: "#8800ff"
+                    });
+                }
+                if (frameCount % 20 === 0) {
+                    bullets.push({ x: box.x, y: heart.y, vx: 6.0*BULLET_SPEED_MULT, vy: 0, size: 12, color: "#ffffff" });
+                    bullets.push({ x: box.x + box.w, y: heart.y, vx: -6.0*BULLET_SPEED_MULT, vy: 0, size: 12, color: "#ffffff" });
+                }
+            }
+
+            if (currentBoss.type === "abyss") {
+                box.w = box.defaultW + Math.sin(frameCount * 0.05) * 80;
+                box.h = box.defaultH + Math.cos(frameCount * 0.05) * 60;
+                box.x = canvas.width / 2 - box.w / 2;
+                box.y = canvas.height / 2 - box.h / 2 - 20;
+
+                if (frameCount % 5 === 0) {
+                    let side = Math.floor(Math.random()*4);
+                    let rx = box.x; let ry = box.y;
+                    if(side === 0) { rx = box.x + Math.random()*box.w; ry = box.y; }
+                    else if(side === 1) { rx = box.x + box.w; ry = box.y + Math.random()*box.h; }
+                    else if(side === 2) { rx = box.x + Math.random()*box.w; ry = box.y + box.h; }
+                    else { rx = box.x; ry = box.y + Math.random()*box.h; }
+
+                    let angleToHeart = Math.atan2(heart.y - ry, heart.x - rx);
+                    bullets.push({ x: rx, y: ry, vx: Math.cos(angleToHeart)*3.8*BULLET_SPEED_MULT, vy: Math.sin(angleToHeart)*3.8*BULLET_SPEED_MULT, size: 9, color: "#ff0033" });
+                }
+            }
+
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                let b = bullets[i]; b.x += b.vx; b.y += b.vy;
+
+                if (b.bounce && b.bounce > 0) {
+                    if (b.x < box.x + b.size/2 || b.x > box.x + box.w - b.size/2) { b.vx *= -1; b.bounce--; }
+                    if (b.y < box.y + b.size/2 || b.y > box.y + box.h - b.size/2) { b.vy *= -1; b.bounce--; }
+                }
+
+                if (b.split && b.y > box.y + box.h / 2) {
+                    bullets.push({ x: b.x, y: b.y, vx: -3.0*BULLET_SPEED_MULT, vy: 3.0*BULLET_SPEED_MULT, size: 7, color: "#22aa22" });
+                    bullets.push({ x: b.x, y: b.y, vx: 3.0*BULLET_SPEED_MULT, vy: 3.0*BULLET_SPEED_MULT, size: 7, color: "#22aa22" });
+                    bullets.splice(i, 1); continue;
+                }
+                if (Math.hypot(b.x - heart.x, b.y - heart.y) < (b.size/2 + heart.size/2)) {
+                    let dotProduct = moveX * b.vx + moveY * b.vy;
+                    if (dotProduct < -2) {
+                        triggerDamage(0.5);
+                        playTone(800, 'sine', 0.05, 0.15);
+                        for(let p=0; p<4; p++) {
+                            particles.push({
+                                x: b.x, y: b.y, vx: (Math.random()-0.5)*6, vy: (Math.random()-0.5)*6,
+                                size: 2, color: "#00ffbc", life: 10
+                            });
+                        }
+                        bullets.splice(i, 1);
+                        continue;
+                    } else {
+                        triggerDamage(1);
+                    }
+                }
+                if (b.y < box.y - 60 || b.y > box.y + box.h + 60 || b.x < box.x - 60 || b.x > box.x + box.w + 60) {
+                    bullets.splice(i, 1);
+                }
+            }
+
+            for (let i = lasers.length - 1; i >= 0; i--) {
+                let l = lasers[i];
+                if (l.warning > 0) l.warning--;
+                else {
+                    l.active--;
+                    if (heart.y + heart.size > l.y - l.thickness/2 && heart.y - heart.size < l.y + l.thickness/2) triggerDamage(1);
+                    if (l.active <= 0) lasers.splice(i, 1);
+                }
+            }
+            for (let i = hallucinations.length - 1; i >= 0; i--) {
+                let h = hallucinations[i]; h.x += h.vx; h.y += h.vy;
+                if (h.y > box.y + box.h + 60) hallucinations.splice(i, 1);
+            }
+            for (let i = particles.length - 1; i >= 0; i--) {
+                particles[i].x += particles[i].vx; particles[i].y += particles[i].vy; particles[i].life--;
+                if (particles[i].life <= 0) particles.splice(i, 1);
+            }
+        }
+
+        function drawBossIllustration(type, cx, cy, color) {
+            ctx.save(); ctx.fillStyle = color; ctx.strokeStyle = color;
+            let t = frameCount * 0.08; let pulse = Math.sin(t) * 4;
+
+            if (type === "puppet") {
+                ctx.fillRect(cx - 20, cy - 20 + pulse, 40, 12); ctx.fillRect(cx - 14, cy - 8 + pulse, 28, 35);
+                ctx.fillStyle = "#ffffff"; ctx.fillRect(cx - 25, cy + pulse, 5, 18); ctx.fillRect(cx + 20, cy + pulse, 5, 18);
+            }
+            else if (type === "frequency") {
+                ctx.lineWidth = 3;
+                for(let i=0; i<6; i++) {
+                    let offset = Math.sin(t * 1.5 + i) * 15;
+                    ctx.beginPath(); ctx.moveTo(cx - 50, cy - 25 + (i * 10) + offset); ctx.lineTo(cx + 50, cy - 25 + (i * 10) - offset); ctx.stroke();
+                }
+            }
+            else if (type === "cannibal") {
+                ctx.fillRect(cx - 30, cy - 25 - Math.abs(pulse), 60, 14); ctx.fillRect(cx - 26, cy + 5 + Math.abs(pulse), 52, 14);
+                ctx.fillStyle = "#ffffff"; for(let i = 0; i < 5; i++) ctx.fillRect(cx - 22 + (i * 10), cy - 11 - Math.abs(pulse), 4, 5);
+            }
+            else if (type === "eye") {
+                ctx.lineWidth = 4; ctx.beginPath(); ctx.ellipse(cx, cy, 45 + pulse, 25 + pulse/2, 0, 0, Math.PI*2); ctx.stroke();
+                ctx.fillStyle = "#000000"; ctx.beginPath(); let ox = (heart.x - cx) * 0.04; let oy = (heart.y - cy) * 0.04; ctx.arc(cx + ox, cy + oy, 14, 0, Math.PI*2); ctx.fill();
+            }
+            else if (type === "doctor") {
+                ctx.beginPath(); ctx.moveTo(cx - 25, cy - 25); ctx.lineTo(cx + 25, cy - 25); ctx.lineTo(cx + 30, cy - 5); ctx.lineTo(cx, cy + 40 + pulse); ctx.closePath(); ctx.fill();
+            }
+            else if (type === "null" || type === "glitch") {
+                for(let i=0; i<25; i++) {
+                    ctx.fillStyle = Math.random() > 0.4 ? color : "#222222";
+                    ctx.fillRect(cx - 45 + Math.random()*90, cy - 45 + Math.random()*90, 8, 8);
+                }
+            }
+            else if (type === "shadow") {
+                ctx.lineWidth = 3;
+                ctx.beginPath(); ctx.moveTo(cx - 30, cy - 30 + pulse); ctx.lineTo(cx + 30, cy + 30 - pulse); ctx.moveTo(cx + 30, cy - 30 + pulse); ctx.lineTo(cx - 30, cy + 30 - pulse); ctx.stroke();
+                ctx.fillRect(cx - 10, cy - 10, 20, 20);
+            }
+            else if (type === "mirror") {
+                ctx.lineWidth = 3; ctx.strokeRect(cx - 25 + pulse, cy - 25 + pulse, 50, 50);
+                ctx.fillStyle = "#ffffff"; ctx.fillRect(cx - 4, cy - 4, 8, 8);
+            }
+            else if (type === "abyss") {
+                ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(cx, cy, 35 + pulse * 2, 0, Math.PI*2); ctx.stroke();
+            }
+            ctx.restore();
+        }
+
+        function drawGame() {
+            let rMod = Math.floor((100 - sanity) * 0.6);
+            ctx.fillStyle = `rgb(${2 + rMod}, 0, 0)`; ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.save();
+            if (sanity < 50) {
+                let shakeIntensity = (50 - sanity) * 0.35;
+                ctx.translate((Math.random()-0.5)*shakeIntensity, (Math.random()-0.5)*shakeIntensity);
+            }
+            if (screenShake > 0) ctx.translate((Math.random()-0.5)*screenShake, (Math.random()-0.5)*screenShake);
+
+            if (sanity < 40 && Math.random() < 0.08) {
+                playerLabel.innerText = "Z İ H İ N_K I L İ T L E N M E S İ : %" + Math.floor(Math.random()*100);
+            } else {
+                playerLabel.innerText = `AKIL SAĞLIĞI: ${Math.ceil(sanity)}%`;
+            }
+            playerFill.style.width = sanity + "%";
+
+            if (sanity <= 0) {
+                gameState = "GAMEOVER";
+                textCtx.innerHTML = "<span style='color:#ff0055;'>* SİSTEM ÇÖKTÜ. RUHUN TAMAMEN PARÇALARA AYRILDI.</span>";
+                promptCtx.innerHTML = "[ SİSTEMİ YENİDEN YÜKLEMEK İÇİN SAYFAYI YENİLE ]";
+                logEvent("PLAYER_DEFEATED", { bossIndex: currentBossIndex, bossName: bosses[currentBossIndex] ? bosses[currentBossIndex].name : "BİLİNMİYOR" });
+                sendResultToParent("GAMEOVER");
+                ctx.restore(); return;
+            }
+
+            if (gameState === "ULTIMATE_VICTORY") {
+                textCtx.innerHTML = "<span style='color:#ff0033; font-weight:bold; letter-spacing:1px;'>* GERÇEKTEN KAZANDIĞINI MI SANIYORSUN? BU BİR DÖNGÜ. BİR SONRAKİ SEFERE ASLA KAZANAMAYACAKSIN. ASLA...</span>";
+                promptCtx.innerHTML = "[ SİSTEM SIFIRLANDI. KAÇIŞ YOK. ]";
+                ctx.fillStyle = "rgba(255, 0, 0, 0.2)"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+                logEvent("ALL_BOSSES_DEFEATED", { sanityLeft: Math.ceil(sanity) });
+                sendResultToParent("WIN");
+                ctx.restore(); return;
+            }
+
+            ctx.strokeStyle = gameState === "FIGHT" ? bosses[currentBossIndex].color : "#fff";
+            ctx.lineWidth = 5; ctx.strokeRect(box.x, box.y, box.w, box.h);
+
+            if (gameState === "FIGHT" || gameState === "INTRO") {
+                drawBossIllustration(bosses[currentBossIndex].type, box.x + box.w / 2, box.y - 65, bosses[currentBossIndex].color);
+            }
+
+            if (gameState === "FIGHT") {
+                updateFightMechanics();
+
+                for (let l of lasers) {
+                    if (l.warning > 0) {
+                        ctx.strokeStyle = frameCount % 2 === 0 ? "rgba(255, 0, 0, 0.9)" : "rgba(255,255,255,0.02)";
+                        ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(box.x, l.y); ctx.lineTo(box.x + box.w, l.y); ctx.stroke();
+                    } else {
+                        ctx.fillStyle = frameCount % 2 === 0 ? "#fff" : bosses[currentBossIndex].color;
+                        ctx.fillRect(box.x, l.y - l.thickness/2, box.w, l.thickness);
+                    }
+                }
+
+                for (let f of fleshItems) {
+                    let sizeMod = Math.sin(f.pulse) * 2;
+                    ctx.fillStyle = "#ff00ff"; ctx.fillRect(f.x - (f.size+sizeMod)/2, f.y - (f.size+sizeMod)/2, f.size+sizeMod, f.size+sizeMod);
+                }
+
+                if (heart.invulnFrames === 0 || Math.floor(frameCount / 3) % 2 === 0) {
+                    ctx.fillStyle = "#ff0000"; ctx.beginPath();
+                    ctx.moveTo(heart.x, heart.y - heart.size);
+                    ctx.bezierCurveTo(heart.x + heart.size, heart.y - heart.size * 1.6, heart.x + heart.size * 1.8, heart.y + heart.size * 0.2, heart.x, heart.y + heart.size);
+                    ctx.bezierCurveTo(heart.x - heart.size * 1.8, heart.y + heart.size * 0.2, heart.x - heart.size, heart.y - heart.size * 1.6, heart.x, heart.y - heart.size);
+                    ctx.fill();
+                }
+
+                for (let b of bullets) {
+                    ctx.fillStyle = b.color; ctx.beginPath(); ctx.arc(b.x, b.y, b.size/2, 0, Math.PI*2); ctx.fill();
+                }
+
+                for (let h of hallucinations) {
+                    ctx.fillStyle = h.color; ctx.fillRect(h.x - h.size/2, h.y - h.size/2, h.size, h.size);
+                }
+                for (let p of particles) {
+                    ctx.fillStyle = p.color; ctx.fillRect(p.x, p.y, p.size, p.size);
+                }
+            }
+
+            if (sanity < 60) {
+                let gradient = ctx.createRadialGradient(canvas.width/2, canvas.height/2, box.w/3, canvas.width/2, canvas.height/2, canvas.width);
+                gradient.addColorStop(0, "transparent"); gradient.addColorStop(1, `rgba(0, 0, 0, ${(60 - sanity) / 45})`);
+                ctx.fillStyle = gradient; ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+
+            ctx.restore();
+            requestAnimationFrame(drawGame);
+        }
+
+        setupBossIntro();
+        drawGame();
+    </script>
+</body>
+</html>
