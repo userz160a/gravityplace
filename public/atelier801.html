@@ -86,13 +86,7 @@
             width: 100vw;
             height: 100vh;
             display: none;
-            background-color: #000;
-        }
-
-        .flash-object {
-            width: 100%;
-            height: 100%;
-            border: none;
+            background-color: #6A7495;
         }
     </style>
 </head>
@@ -104,37 +98,30 @@
             <p>Oynatmak istediğiniz oyunu seçin</p>
         </div>
         <div class="btn-grid">
-            <button onclick="launchGame('/TransformiceChargeur.swf')">Transformice</button>
-            <button onclick="launchGame('/chargeur-deadmeat.swf')">Dead Maze</button>
-            <button onclick="launchGame('/ChargeurBouboum.swf')">Bouboum</button>
-            <button onclick="launchGame('/nk.swf')">Nekodancer</button>
+            <button onclick="launchGame('TransformiceChargeur.swf', 'Transformice')">Transformice</button>
+            <button onclick="launchGame('chargeur-deadmeat.swf', 'DeadMaze')">Dead Maze</button>
+            <button onclick="launchGame('ChargeurBouboum.swf', 'Bouboum')">Bouboum</button>
+            <button onclick="launchGame('nk.swf', 'Nekodancer')">Nekodancer</button>
         </div>
     </div>
 
     <div id="game-container"></div>
 
     <script>
-        function launchGame(swfFile) {
+        function launchGame(swfFile, gameName) {
             document.getElementById('selector-screen').style.display = 'none';
             const container = document.getElementById('game-container');
             container.style.display = 'block';
 
             container.innerHTML = `
-                <embed id="pepperFlashApp"
-                       name="pepperFlashApp"
-                       src="${swfFile}"
-                       type="application/x-shockwave-flash"
-                       width="100%"
-                       height="100%"
-                       quality="high"
-                       bgcolor="#000000"
-                       wmode="gpu"
-                       scale="exactfit"
-                       allowScriptAccess="always"
-                       allowFullScreen="true"
-                       allowNetworking="all"
-                       swliveconnect="true">
-                </embed>
+                <object id="swf1" classid="clsid:d27cdb6e-ae6d-11cf-96b8-444553540000" codebase="http://fpdownload.macromedia.com/pub/shockwave/cabs/flash/swflash.cab#version=9,0,0,0" width="100%" height="100%" align="middle">
+                    <param name="allowScriptAccess" value="always" />
+                    <param name="movie" value="${swfFile}" />
+                    <param name="menu" value="true" />
+                    <param name="quality" value="high" />
+                    <param name="bgcolor" value="#6A7495" />
+                    <embed id="swf2" src="${swfFile}" wmode="direct" menu="true" quality="high" bgcolor="#6A7495" width="100%" height="100%" name="${gameName}" align="middle" swLiveConnect="true" allowFullScreen="true" allowScriptAccess="always" type="application/x-shockwave-flash" pluginspage="http://www.macromedia.com/go/getflashplayer" />
+                </object>
             `;
         }
     </script>
