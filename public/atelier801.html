@@ -119,36 +119,22 @@
             const container = document.getElementById('game-container');
             container.style.display = 'block';
 
-            if (document.documentElement.requestFullscreen) {
-                document.documentElement.requestFullscreen();
-            } else if (document.documentElement.mozRequestFullScreen) {
-                document.documentElement.mozRequestFullScreen();
-            } else if (document.documentElement.webkitRequestFullscreen) {
-                document.documentElement.webkitRequestFullscreen();
-            } else if (document.documentElement.msRequestFullscreen) {
-                document.documentElement.msRequestFullscreen();
-            }
-
             container.innerHTML = `
-                <object classid="clsid:d27cdb6e-ae6d-11cf-96b8-444553540000" class="flash-object">
-                    <param name="allowScriptAccess" value="always" />
-                    <param name="movie" value="${swfFile}" />
-                    <param name="quality" value="high" />
-                    <param name="bgcolor" value="#000000" />
-                    <param name="allowFullScreen" value="true" />
-                    <param name="scale" value="exactfit" />
-                    
-                    <embed src="${swfFile}" 
-                           quality="high" 
-                           bgcolor="#000000" 
-                           class="flash-object" 
-                           allowScriptAccess="always" 
-                           allowFullScreen="true" 
-                           scale="exactfit"
-                           type="application/x-shockwave-flash" 
-                           pluginspage="http://www.adobe.com/go/getflashplayer">
-                    </embed>
-                </object>
+                <embed id="pepperFlashApp"
+                       name="pepperFlashApp"
+                       src="${swfFile}"
+                       type="application/x-shockwave-flash"
+                       width="100%"
+                       height="100%"
+                       quality="high"
+                       bgcolor="#000000"
+                       wmode="gpu"
+                       scale="exactfit"
+                       allowScriptAccess="always"
+                       allowFullScreen="true"
+                       allowNetworking="all"
+                       swliveconnect="true">
+                </embed>
             `;
         }
     </script>
