@@ -1,74 +1,48 @@
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
-     "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<!DOCTYPE html>
 <html>
 <head>
 <title>Bouboum !</title>
-<meta name="Content-Type" content="UTF-8">
-<meta name="Content-Language" content="en">
-<meta name="Description" content="Bouboum is a multiplayer strategy game, with bombs and hamsters!">
-<meta name="Keywords" content="bouboum, transformice, bomberman, multiplayer, game, game studio, flash game, flash, free, free to play, browser, browser game, videogame">
-<meta name="Subject" content="Videogames">
-<meta name="Copyright" content="Atelier 801 SARL">
-<meta name="Author" content="Mélanie Christin">
-<meta name="Identifier-Url" content="http://bouboum.atelier801.com">
-<meta name="Rating" content="general">
-<meta name="Distribution" content="global">
-<meta name="Category" content="games">
-
-<style type="text/css">
-body {
-	font-family: Lucida Grande, Arial, Helvetica, Sans-serif;
-	font-size: 0.8em;
-	text-align: left;
-	background: #575f44;
-	color: #999;
-	margin: 0 0 0 0;
+<meta charset="UTF-8">
+<style>
+	html, body {
+		margin: 0;
+		padding: 0;
+		width: 100%;
+		height: 100%;
+		background: #575f44;
+		overflow: hidden;
 	}
-
-#page {
-	background: url('fond-bouboum.jpg') no-repeat;
-	margin: 0 auto 0 auto;
-	width: 1162px;
-	min-height: 835px;
+	#bouboum {
+		position: fixed;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
 	}
-
-#jeu {
-	padding-top: 160px;
+	object, embed {
+		width: 100%;
+		height: 100%;
 	}
 </style>
 </head>
 <body>
 
-<script type="text/javascript">
+<script>
 	var langue = navigator.language;
-	if (!langue) {
-		langue = navigator.browserLanguage;
-	}
+	if (!langue) { langue = navigator.browserLanguage; }
 	langue = langue.substr(0, 2);
 
-	function positionMolette(X, Y) {
-	}
-	function activerMolette(OUI, HAUT) {
-	}
-	function recupLangue() {
-		return langue;
-	}
-	function pleinEcran(OUI) {
-		if (OUI) {
-			document.getElementById("banniere") && (document.getElementById("banniere").style.display = "none");
-		} else {
-			document.getElementById("banniere") && (document.getElementById("banniere").style.display = "inline");
-		}
-	}
+	function positionMolette(X, Y) {}
+	function activerMolette(OUI, HAUT) {}
+	function recupLangue() { return langue; }
+	function pleinEcran(OUI) {}
 	function cancelEvent(e) {
 		if (navigator.userAgent.indexOf("hrome") != -1) {
 			document.getElementById("swf2").x_moletteTransformice(e.wheelDelta);
 		}
 		e = e ? e : window.event;
-		if (e.stopPropagation)
-			e.stopPropagation();
-		if (e.preventDefault)
-			e.preventDefault();
+		if (e.stopPropagation) e.stopPropagation();
+		if (e.preventDefault) e.preventDefault();
 		e.cancelBubble = true;
 		e.cancel = true;
 		e.returnValue = false;
@@ -86,26 +60,18 @@ body {
 	}
 </script>
 
-<div id="page">
-
-<div id="jeu">
-	<div class="jeu" style="width:800px;height:600px;">
-			<div id="bouboum" style="width:100%;height:100%;">
-					<object id="swf1" classid="clsid:d27cdb6e-ae6d-11cf-96b8-444553540000" codebase="http://fpdownload.macromedia.com/pub/shockwave/cabs/flash/swflash.cab#version=9,0,0,0" width="100%" height="100%" align="middle">
-					<param name="allowScriptAccess" value="always"/>
-					<param name="movie" value="ChargeurBouboum.swf"/>
-					<param name="menu" value="true"/>
-					<param name="quality" value="high"/>
-					<param name="bgcolor" value="#6A7495"/>
-					<embed id="swf2" src="ChargeurBouboum.swf" wmode="direct" menu="true" quality="high" bgcolor="#575f44" width="100%" height="100%" name="Bouboum" align="middle" swliveconnect="true" allowfullscreen="true" allowscriptaccess="always" type="application/x-shockwave-flash" pluginspage="http://www.macromedia.com/go/getflashplayer"/>
-					</object>
-			</div>
-	</div>
+<div id="bouboum">
+	<object id="swf1" classid="clsid:d27cdb6e-ae6d-11cf-96b8-444553540000" codebase="http://fpdownload.macromedia.com/pub/shockwave/cabs/flash/swflash.cab#version=9,0,0,0" width="100%" height="100%" align="middle">
+	<param name="allowScriptAccess" value="always"/>
+	<param name="movie" value="ChargeurBouboum.swf"/>
+	<param name="menu" value="true"/>
+	<param name="quality" value="high"/>
+	<param name="bgcolor" value="#6A7495"/>
+	<embed id="swf2" src="ChargeurBouboum.swf" wmode="direct" menu="true" quality="high" bgcolor="#575f44" width="100%" height="100%" name="Bouboum" align="middle" swliveconnect="true" allowfullscreen="true" allowscriptaccess="always" type="application/x-shockwave-flash" pluginspage="http://www.macromedia.com/go/getflashplayer"/>
+	</object>
 </div>
 
-</div>
-
-<script type="text/javascript">
+<script>
 	hookEvent(document.getElementById("bouboum"), "mousewheel", cancelEvent);
 </script>
 
